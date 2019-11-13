@@ -16,6 +16,7 @@ const float wndspd=0.0;    //m/s
 
 void setup() {
   Serial.begin(9600);
+  SD.begin(BUILTIN_SDCARD);   //initialize SD card to save telemetry
   pinMode(SDA0,INPUT);    //SDA0
   pinMode(SDA1,INPUT);    //SDA1
   pinMode(SCL0,INPUT);    //SCL0
