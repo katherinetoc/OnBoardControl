@@ -1,3 +1,6 @@
+#include <Adafruit_BMP3XX.h>
+#include <bmp3.h>
+#include <bmp3_defs.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_LSM9DS1.h>
 #include <Wire.h>
@@ -12,7 +15,9 @@
 #define TVC2 3
 #define iris 1
 #define reac 0
+#define sealvl_P (69)     //Pa
 Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1(); // i2c sensor
+Adafruit_BMP3XX bmp; // I2C
 const float g=9.80665;   //m/s^2
 const float wndspd=0.0;    //m/s
 
@@ -64,6 +69,9 @@ void loop() {
   mag_x = mag.magnetic.x;   //x-comp magnetic field
   mag_y = mag.magnetic.y;   //y-comp
   mag_z = mag.magnetic.z;   //z-comp
+  P = bmp.pressure;         //Pressure in Pa
+  alt = bmp.readAltitude(sealvl_P);   //altitude in meters
+  //probably need a delay in here after grabbing all the sensor readings
   
   
 
