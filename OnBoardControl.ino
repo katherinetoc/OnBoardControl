@@ -12,11 +12,11 @@
 #define SDA1 17
 #define SCL0 19
 #define SCL1 16
-#define TVC1 2
-#define TVC2 3
-#define iris 1
-#define reac 0
-#define sealvl_P (69)     //Pa
+#define TVC1 13
+#define TVC2 14
+#define iris 15
+#define reac 23
+#define sealvl_P (69)     //Pa                                //**CHANGE ON DAY OF LAUNCH**
 Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1(); // i2c sensor
 Adafruit_BMP3XX bmp; // I2C
 const float g=9.80665;   //m/s^2
@@ -29,6 +29,8 @@ const float q_0e = 1.0;   //rad
 const float q_1e = 0.0;
 const float q_2e = 0.0;
 const float q_3e = 0.0;
+float u[3];         //initialize input vector
+float x_c[7];       //initialize state vector
 float R_zx[9];      //initialize Rz*Rx
 float R_zxz[9];     //initialize full Rz*Rx*Rz rotation matrix
 float K[21] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
@@ -38,10 +40,10 @@ float K[21] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
 
 void setup() {
   Serial.begin(115200);
-  pinMode(SDA0,INPUT);    //SDA0
-  pinMode(SDA1,INPUT);    //SDA1
-  pinMode(SCL0,INPUT);    //SCL0
-  pinMode(SCL1,INPUT);    //SCL1
+  pinMode(SDA0,INPUT);    //SDA0    //altimeter
+  pinMode(SDA1,INPUT);    //SDA1    //IMU
+  pinMode(SCL0,INPUT);    //SCL0    //altimeter
+  pinMode(SCL1,INPUT);    //SCL1    //IMU
   pinMode(reac,OUTPUT);    //reaction wheel motor
   pinMode(iris,OUTPUT);    //iris servo
   pinMode(TVC1,OUTPUT);    //TVC servo 1
@@ -83,12 +85,13 @@ void loop() {
   mag_z = mag.magnetic.z;   //z-comp
   P = bmp.pressure;         //Pressure in Pa
   alt = bmp.readAltitude(sealvl_P);   //altitude in meters
-  //probably need a delay in here after grabbing all the sensor readings
-  w_xc = w_x - w_xe;    //difference between real and desired ang. vel.
+  //difference between real and desired ang. vel.
+  w_xc = w_x - w_xe;    
   w_yc = w_y - w_ye;
   w_zc = w_z - w_ze;
   
   //insert filter here
+  //using Kalman filter
   //then integrate angular velocities to get angles
 
   //generate rotation matrices based on integrated angular velocities
@@ -101,6 +104,31 @@ void loop() {
   R_z3 = {cos(theta3), -sin(theta3), 0,
           sin(theta3), cos(theta3), 1};
   void Multiply(R_z1,R_x2, 3, 3, 3, R_zx);
-  void Multiply(R_zx, R_z3, 3, 3, 3, R_zxz);      
+  void Multiply(R_zx, R_z3, 3, 3, 3, R_zxz);      //Euler angle rotation matrix
+  //calculate quaternions based on current orientation angles
+  q0 = 0.5*sqrt(R_zxz[0] + R_zxz[4] + R_zxz[8] + 1);
+  q1 = 0.25*(1/q0)*(R_zxz[7] - R_zxz[5]);
+  q2 = 0.25*(1/q0)*(R_zxz[2] - R_zxz[6]);
+  q3 = 0.25*(1/q0)*(R_zxz[3] - R_zxz[1]);
+  //find difference between current and desired orientation
+  q_0c = q0 - q_0e;
+  q_1c = q1 - q_1e;
+  q_2c = q2 - q_2e;
+  q_3c = q3 - q_3c;
+  //populate state vector
+  x_c[0] = q_0c;
+  x_c[1] = q_1c;
+  x_c[2] = q_2c;
+  x_c[3] = q_3c;
+  x_c[4] = w_xc;
+  x_c[5] = w_yc;
+  x_c[6] = w_zc;
+  x_c = -1*x_c;
+  void Multiply(K,x_c,3,7,1,u);
 
+  //need to figure out how a PWM value maps to an angular value
+
+  //also need to determine how to write to EEPROM
+
+  //probably need a delay in here
 }
