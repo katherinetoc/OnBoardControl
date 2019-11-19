@@ -1,3 +1,4 @@
+#include <MatrixMath.h>
 #include <Adafruit_BMP3XX.h>
 #include <bmp3.h>
 #include <bmp3_defs.h>
@@ -19,7 +20,20 @@
 Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1(); // i2c sensor
 Adafruit_BMP3XX bmp; // I2C
 const float g=9.80665;   //m/s^2
-const float wndspd=0.0;    //m/s
+const float wndspd=0.0;    //m/s                              //**CHANGE ON DAY OF LAUNCH**
+//equilibrium state variables
+const float w_xe = 0.0;   //rad/s
+const float w_ye = 0.0;
+const float w_ze = 0.0;
+const float q_0e = 1.0;   //rad
+const float q_1e = 0.0;
+const float q_2e = 0.0;
+const float q_3e = 0.0;
+float R_zx[9];      //initialize Rz*Rx
+float R_zxz[9];     //initialize full Rz*Rx*Rz rotation matrix
+float K[21] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
+                  0.0000, 0.4000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000,
+                  0.0000, 1.5000, 0.0500, 0.2500, 0.2500, 0.1500, 0.3500 };   //tentative gain matrix. Negative real eigenvalues for A-BK. Can be tuned further if needed.
 
 
 void setup() {
@@ -39,25 +53,23 @@ void setup() {
   
   
 
-  float A[49] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
-                  0.0000, 0.0000, 0.0000, 0.0000, 0.5000, 0.0000, 0.0000,
-                  0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.5000, 0.0000,
-                  0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.5000,
-                  0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
-                  0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
-                  0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000 };
+  //float A[49] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
+  //                0.0000, 0.0000, 0.0000, 0.0000, 0.5000, 0.0000, 0.0000,
+  //                0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.5000, 0.0000,
+  //                0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.5000,
+  //                0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
+  //                0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
+  //                0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000 };
   
-  float B[21] = { 0.0000, 0.0000, 0.0000,
-                  0.0000, 0.0000, 0.0000,
-                  0.0000, 0.0000, 0.0000,
-                  0.0000, 0.0000, 0.0000,
-                  986.6935, 0.0000, 0.0000,
-                  0.0000, 82.9891, 0.0000,
-                  0.0000, 0.0000, 82.9891 };
+ //float B[21] = { 0.0000, 0.0000, 0.0000,
+ //                0.0000, 0.0000, 0.0000,
+ //                 0.0000, 0.0000, 0.0000,
+ //                 0.0000, 0.0000, 0.0000,
+ //                 986.6935, 0.0000, 0.0000,
+ //                 0.0000, 82.9891, 0.0000,
+ //                 0.0000, 0.0000, 82.9891 };
 
-  float K[21] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
-                  0.0000, 0.4000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000,
-                  0.0000, 1.5000, 0.0500, 0.2500, 0.2500, 0.1500, 0.3500 };   //tentative gain matrix. Negative real eigenvalues for A-BK. Can be tuned further if needed.
+  
 }
 
 void loop() {
@@ -72,7 +84,23 @@ void loop() {
   P = bmp.pressure;         //Pressure in Pa
   alt = bmp.readAltitude(sealvl_P);   //altitude in meters
   //probably need a delay in here after grabbing all the sensor readings
+  w_xc = w_x - w_xe;    //difference between real and desired ang. vel.
+  w_yc = w_y - w_ye;
+  w_zc = w_z - w_ze;
   
-  
+  //insert filter here
+  //then integrate angular velocities to get angles
+
+  //generate rotation matrices based on integrated angular velocities
+  R_z1 = {cos(theta1), -sin(theta1), 0,
+          sin(theta1), cos(theta1), 0,
+          0, 0, 1};
+  R_x2 = {1, 0, 0,
+          0, cos(theta2), sin(theta2),
+          0, sin(theta2), cos(theta2)};
+  R_z3 = {cos(theta3), -sin(theta3), 0,
+          sin(theta3), cos(theta3), 1};
+  void Multiply(R_z1,R_x2, 3, 3, 3, R_zx);
+  void Multiply(R_zx, R_z3, 3, 3, 3, R_zxz);      
 
 }
