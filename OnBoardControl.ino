@@ -17,6 +17,7 @@
 #define iris 15
 #define reac 23
 #define sealvl_P (69)     //Pa                                //**CHANGE ON DAY OF LAUNCH**
+#define MAX_EEPROM_ADDR 65536
 Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1(); // i2c sensor
 Adafruit_BMP3XX bmp; // I2C
 const float g=9.80665;   //m/s^2
@@ -37,6 +38,20 @@ float K[21] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
                   0.0000, 0.4000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000,
                   0.0000, 1.5000, 0.0500, 0.2500, 0.2500, 0.1500, 0.3500 };   //tentative gain matrix. Negative real eigenvalues for A-BK. Can be tuned further if needed.
 
+int curr_address = 0;
+int num_logs = 0;
+int data_size = 0;
+
+struct dataNode{
+  float roll;
+  float yaw;
+  float roll;
+  float h;
+  //Add whatever other data to be logged 
+};
+typedef struct dataNode data_node;
+
+
 
 void setup() {
   Serial.begin(115200);
@@ -53,7 +68,7 @@ void setup() {
   lsm.setupMag(lsm.LSM9DS1_MAGGAIN_4GAUSS);   //setup magnetometer range --> 4 Gauss
   lsm.setupGyro(lsm.LSM9DS1_GYROSCALE_245DPS);    //setup gryroscope range --> 245 degrees per second
   
-  
+  data_size = sizeof(data_node);
 
   //float A[49] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
   //                0.0000, 0.0000, 0.0000, 0.0000, 0.5000, 0.0000, 0.0000,
@@ -129,6 +144,20 @@ void loop() {
   //need to figure out how a PWM value maps to an angular value
 
   //also need to determine how to write to EEPROM
-
+  data_node to_log;
+  to_log.roll = roll;
+  to_log.yaw = yaw;
+  to_log.pitch = pitch;
+  to_log.h = h;
+  if(curr_address <= (MAX_EEPROM_ADDR - data_size)){
+    EEPROM.put(curr_address, to_log);
+    num_logs++;
+    curr_address += data_size;
+  }else{
+    //EEPROM overflow whoops handle somehow
+  }
+  
   //probably need a delay in here
 }
+
+void 
