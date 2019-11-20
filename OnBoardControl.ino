@@ -30,6 +30,7 @@ const float q_0e = 1.0;   //rad
 const float q_1e = 0.0;
 const float q_2e = 0.0;
 const float q_3e = 0.0;
+bool read_mode = false;
 float u[3];         //initialize input vector
 float x_c[7];       //initialize state vector
 float R_zx[9];      //initialize Rz*Rx
@@ -41,6 +42,8 @@ float K[21] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
 int curr_address = 0;
 int num_logs = 0;
 int data_size = 0;
+meta_data_node data_info;
+int log_count = 0;
 
 struct dataNode{
   float roll;
@@ -51,7 +54,11 @@ struct dataNode{
 };
 typedef struct dataNode data_node;
 
-
+struct metaDataNode{
+  int num_logs;
+  int data_size;
+};
+typedef struct metaDataNode meta_data_node;
 
 void setup() {
   Serial.begin(115200);
@@ -67,8 +74,19 @@ void setup() {
   lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_2G);  //setup acceleration range --> 2g's
   lsm.setupMag(lsm.LSM9DS1_MAGGAIN_4GAUSS);   //setup magnetometer range --> 4 Gauss
   lsm.setupGyro(lsm.LSM9DS1_GYROSCALE_245DPS);    //setup gryroscope range --> 245 degrees per second
-  
-  data_size = sizeof(data_node);
+
+  if(!read_mode){
+    data_size = sizeof(data_node);
+    curr_address = sizeof(meta_data_node); //Start data logging after meta_data node
+    data_info.data_size = data_size;
+    data_info.num_logs = 0;
+    EEPROM.put(0, data_info);
+  }else{
+    EEPROM.get(0,data_info);
+    data_size = data_info.data_size;
+    curr_address = data_size;
+    log_count = data_info.num_logs;
+  }
 
   //float A[49] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
   //                0.0000, 0.0000, 0.0000, 0.0000, 0.5000, 0.0000, 0.0000,
@@ -144,17 +162,34 @@ void loop() {
   //need to figure out how a PWM value maps to an angular value
 
   //also need to determine how to write to EEPROM
-  data_node to_log;
-  to_log.roll = roll;
-  to_log.yaw = yaw;
-  to_log.pitch = pitch;
-  to_log.h = h;
-  if(curr_address <= (MAX_EEPROM_ADDR - data_size)){
-    EEPROM.put(curr_address, to_log);
-    num_logs++;
-    curr_address += data_size;
-  }else{
-    //EEPROM overflow whoops handle somehow
+  if(!read_mode){ //If in operation mode, only writing to EEPROM will occur
+    data_node to_log;
+    to_log.roll = roll;
+    to_log.yaw = yaw;
+    to_log.pitch = pitch;
+    to_log.h = h;
+    if(curr_address <= (MAX_EEPROM_ADDR - data_size)){
+      EEPROM.put(curr_address, to_log);
+      curr_address += data_size;
+      data_info.num_logs++;
+    }else{
+      //EEPROM overflow whoops handle somehow
+    }
+  }else{ //If in collection mode, only reading from EEPROM will occur
+    if(log_count > 0){
+      meta_data_node data_buffer;
+      EEPROM.get(curr_address, data_buffer);
+      float roll_data = data_buffer.roll;
+      float yaw_data = data_buffer.yaw;
+      float pitch_data = data_buffer.pitch;
+      float z_data = data_buffer.z;
+      //Eventually will have to serially communicate data to a computer, writing to some output file
+      curr_address += data_info.data_size;
+      log_count--;
+    }else{
+      //Done with data retrieval, close file on computer
+    }
+    
   }
   
   //probably need a delay in here
