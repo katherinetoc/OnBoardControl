@@ -29,6 +29,10 @@ const float q_0e = 1.0;   //rad
 const float q_1e = 0.0;
 const float q_2e = 0.0;
 const float q_3e = 0.0;
+//initialize Kalman filter parameters
+Q[36]               //angle and bias matrix
+R[6]                //measurement covariance matrix
+//
 float u[3];         //initialize input vector
 float x_c[7];       //initialize state vector
 float R_zx[9];      //initialize Rz*Rx
@@ -90,10 +94,10 @@ void loop() {
   w_yc = w_y - w_ye;
   w_zc = w_z - w_ze;
   
-  //insert filter here
-  //using Kalman filter
-  //then integrate angular velocities to get angles
-
+  //Start Kalman filter
+  
+  
+  //end Kalman filter
   //generate rotation matrices based on integrated angular velocities
   R_z1 = {cos(theta1), -sin(theta1), 0,
           sin(theta1), cos(theta1), 0,
