@@ -17,6 +17,7 @@
 #define iris 15
 #define reac 23
 #define sealvl_P (69)     //Pa                                //**CHANGE ON DAY OF LAUNCH**
+#define MAX_EEPROM_ADDR 65536
 Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1(); // i2c sensor
 Adafruit_BMP3XX bmp; // I2C
 const float g=9.80665;   //m/s^2
@@ -29,10 +30,7 @@ const float q_0e = 1.0;   //rad
 const float q_1e = 0.0;
 const float q_2e = 0.0;
 const float q_3e = 0.0;
-//initialize Kalman filter parameters
-Q[36]               //angle and bias matrix
-R[6]                //measurement covariance matrix
-//
+bool read_mode = false;
 float u[3];         //initialize input vector
 float x_c[7];       //initialize state vector
 float R_zx[9];      //initialize Rz*Rx
@@ -41,6 +39,26 @@ float K[21] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
                   0.0000, 0.4000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000,
                   0.0000, 1.5000, 0.0500, 0.2500, 0.2500, 0.1500, 0.3500 };   //tentative gain matrix. Negative real eigenvalues for A-BK. Can be tuned further if needed.
 
+int curr_address = 0;
+int num_logs = 0;
+int data_size = 0;
+meta_data_node data_info;
+int log_count = 0;
+
+struct dataNode{
+  float roll;
+  float yaw;
+  float roll;
+  float h;
+  //Add whatever other data to be logged
+};
+typedef struct dataNode data_node;
+
+struct metaDataNode{
+  int num_logs;
+  int data_size;
+};
+typedef struct metaDataNode meta_data_node;
 
 void setup() {
   Serial.begin(115200);
@@ -56,8 +74,19 @@ void setup() {
   lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_2G);  //setup acceleration range --> 2g's
   lsm.setupMag(lsm.LSM9DS1_MAGGAIN_4GAUSS);   //setup magnetometer range --> 4 Gauss
   lsm.setupGyro(lsm.LSM9DS1_GYROSCALE_245DPS);    //setup gryroscope range --> 245 degrees per second
-  
-  
+
+  if(!read_mode){
+    data_size = sizeof(data_node);
+    curr_address = sizeof(meta_data_node); //Start data logging after meta_data node
+    data_info.data_size = data_size;
+    data_info.num_logs = 0;
+    EEPROM.put(0, data_info);
+  }else{
+    EEPROM.get(0,data_info);
+    data_size = data_info.data_size;
+    curr_address = data_size;
+    log_count = data_info.num_logs;
+  }
 
   //float A[49] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
   //                0.0000, 0.0000, 0.0000, 0.0000, 0.5000, 0.0000, 0.0000,
@@ -66,7 +95,7 @@ void setup() {
   //                0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
   //                0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
   //                0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000 };
-  
+
  //float B[21] = { 0.0000, 0.0000, 0.0000,
  //                0.0000, 0.0000, 0.0000,
  //                 0.0000, 0.0000, 0.0000,
@@ -75,7 +104,7 @@ void setup() {
  //                 0.0000, 82.9891, 0.0000,
  //                 0.0000, 0.0000, 82.9891 };
 
-  
+
 }
 
 void loop() {
@@ -90,13 +119,13 @@ void loop() {
   P = bmp.pressure;         //Pressure in Pa
   alt = bmp.readAltitude(sealvl_P);   //altitude in meters
   //difference between real and desired ang. vel.
-  w_xc = w_x - w_xe;    
+  w_xc = w_x - w_xe;
   w_yc = w_y - w_ye;
   w_zc = w_z - w_ze;
-  
+
   //Start Kalman filter
-  
-  
+
+
   //end Kalman filter
   //generate rotation matrices based on integrated angular velocities
   R_z1 = {cos(theta1), -sin(theta1), 0,
@@ -133,6 +162,37 @@ void loop() {
   //need to figure out how a PWM value maps to an angular value
 
   //also need to determine how to write to EEPROM
+  if(!read_mode){ //If in operation mode, only writing to EEPROM will occur
+    data_node to_log;
+    to_log.roll = roll;
+    to_log.yaw = yaw;
+    to_log.pitch = pitch;
+    to_log.h = h;
+    if(curr_address <= (MAX_EEPROM_ADDR - data_size)){
+      EEPROM.put(curr_address, to_log);
+      curr_address += data_size;
+      data_info.num_logs++;
+    }else{
+      //EEPROM overflow whoops handle somehow
+    }
+  }else{ //If in collection mode, only reading from EEPROM will occur
+    if(log_count > 0){
+      meta_data_node data_buffer;
+      EEPROM.get(curr_address, data_buffer);
+      float roll_data = data_buffer.roll;
+      float yaw_data = data_buffer.yaw;
+      float pitch_data = data_buffer.pitch;
+      float z_data = data_buffer.z;
+      //Eventually will have to serially communicate data to a computer, writing to some output file
+      curr_address += data_info.data_size;
+      log_count--;
+    }else{
+      //Done with data retrieval, close file on computer
+    }
+
+  }
 
   //probably need a delay in here
 }
+
+void
