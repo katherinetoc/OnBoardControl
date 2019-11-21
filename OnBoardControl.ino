@@ -17,8 +17,8 @@
 #define iris 15
 #define reac 23
 #define sealvl_P (69)     //Pa                                //**CHANGE ON DAY OF LAUNCH**
-#define MAX_EEPROM_ADDR 65536
-#define LOG_SKIP 100
+#define MAX_EEPROM_ADDR 65536   //Highest addressable memory in EEPROM (maybe)
+#define LOG_SKIP 100       //Number of readings to skip between logs
 
 Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1(); // i2c sensor
 Adafruit_BMP3XX bmp; // I2C
@@ -109,7 +109,7 @@ void setup() {
   //                0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
   //                0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
   //                0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000 };
-
+  
  //float B[21] = { 0.0000, 0.0000, 0.0000,
  //                0.0000, 0.0000, 0.0000,
  //                 0.0000, 0.0000, 0.0000,
@@ -118,7 +118,7 @@ void setup() {
  //                 0.0000, 82.9891, 0.0000,
  //                 0.0000, 0.0000, 82.9891 };
 
-
+  
 }
 
 void loop() {
@@ -141,10 +141,6 @@ void loop() {
   //using Kalman filter
   //then integrate angular velocities to get angles
 
-  //Start Kalman filter
-
-
-  //end Kalman filter
   //generate rotation matrices based on integrated angular velocities
   float R_z1[9] = {cos(theta1), -sin(theta1), 0,
           sin(theta1), cos(theta1), 0,
@@ -216,7 +212,7 @@ void loop() {
     }else{
       //Done with data retrieval, do any closing remarks
     }
-
+    
   }
   loop_count++;
   //probably need a delay in here
