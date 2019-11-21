@@ -18,6 +18,8 @@
 #define reac 23
 #define sealvl_P (69)     //Pa                                //**CHANGE ON DAY OF LAUNCH**
 #define MAX_EEPROM_ADDR 65536
+#define LOG_SKIP 100
+
 Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1(); // i2c sensor
 Adafruit_BMP3XX bmp; // I2C
 const float g=9.80665;   //m/s^2
@@ -30,23 +32,7 @@ const float q_0e = 1.0;   //rad
 const float q_1e = 0.0;
 const float q_2e = 0.0;
 const float q_3e = 0.0;
-bool read_mode = false;
-//initialize Kalman filter parameters
-float Q[36]               //angle and bias matrix
-float R[6]                //measurement covariance matrix
-float P[36]               //error covariance matrix
-float theta_x = 0.0;      //rotation about x-axis
-float theta_y = 0.0;      //rotation about y-axis
-float theta_z = 0.0;      //rotation about z-axis
-float w_x_bias = 0.0;     //bias for x angular velocity
-float w_y_bias = 0.0;     //bias for y angular velocity
-float w_z_bias = 0.0;     //bias for z angular velocity
-float w_bias[3];          //full bias vector
-float theta[3];           //full angle vector
-float w[3]                //IMU angular velocity measurement vector
-float rate[3]
-float dt = 69696969.0;    //NEED TO FIND SAMPLE RATE OF IMU OR RUN TIME OF EACH CODE LOOP, WHICHEVER IS THE LIMITING FACTOR
-//
+bool read_mode = false;  //SET TO FALSE IF DOING DATA GENERATION, TRUE IF DOING DATA COLLECTION
 float u[3];         //initialize input vector
 float x_c[7];       //initialize state vector
 float R_zx[9];      //initialize Rz*Rx
@@ -60,12 +46,14 @@ int num_logs = 0;
 int data_size = 0;
 meta_data_node data_info;
 int log_count = 0;
+unsigned long loop_count = 0;
 
 struct dataNode{
-  float roll;
-  float yaw;
-  float roll;
-  float h;
+  float roll; //Roll of body
+  float yaw; //Yaw of body
+  float roll; //Roll of body
+  float h; //Altitude of body
+  unsigned long t; //Time of measurement
   //Add whatever other data to be logged
 };
 typedef struct dataNode data_node;
@@ -86,10 +74,18 @@ void setup() {
   pinMode(iris,OUTPUT);    //iris servo
   pinMode(TVC1,OUTPUT);    //TVC servo 1
   pinMode(TVC2,OUTPUT);    //TVC servo 2
-  lsm.begin(SDA0);
+  if(!lsm.begin(SDA0)){
+    Serial.println("IMU didn't open up right. Infinite looping now.");
+    while(1);
+  }
   lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_2G);  //setup acceleration range --> 2g's
   lsm.setupMag(lsm.LSM9DS1_MAGGAIN_4GAUSS);   //setup magnetometer range --> 4 Gauss
   lsm.setupGyro(lsm.LSM9DS1_GYROSCALE_245DPS);    //setup gryroscope range --> 245 degrees per second
+
+  if (!bmp.begin()) {
+    Serial.println("Altimeter didnt' open up right. Infinite looping now.");
+    while (1);
+  }
 
   if(!read_mode){
     data_size = sizeof(data_node);
@@ -102,6 +98,8 @@ void setup() {
     data_size = data_info.data_size;
     curr_address = data_size;
     log_count = data_info.num_logs;
+    Serial.print("Time(ms), Yaw(deg), Pitch(deg), Roll(deg)");
+
   }
 
   //float A[49] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
@@ -138,30 +136,35 @@ void loop() {
   //Start Kalman filter
   void Subtraction(w, W_bias, 3, 3, rate);      //find new angular velocities
   void Addition(theta, dt*rate, 3, 3, theta);   //find new angle
-  
+
 
   //end Kalman filter
   //generate rotation matrices based on integrated angular velocities
-  R_z1 = {cos(theta1), -sin(theta1), 0,
+  float R_z1[9] = {cos(theta1), -sin(theta1), 0,
           sin(theta1), cos(theta1), 0,
           0, 0, 1};
-  R_x2 = {1, 0, 0,
+  float R_x2[9] = {1, 0, 0,
           0, cos(theta2), sin(theta2),
           0, sin(theta2), cos(theta2)};
-  R_z3 = {cos(theta3), -sin(theta3), 0,
-          sin(theta3), cos(theta3), 1};
-  void Multiply(R_z1,R_x2, 3, 3, 3, R_zx);
-  void Multiply(R_zx, R_z3, 3, 3, 3, R_zxz);      //Euler angle rotation matrix
+  float R_z3[9] = {cos(theta3), -sin(theta3), 0,
+          sin(theta3), cos(theta3), 0,
+          0, 0, 1};
+
+  float R_zx[9];
+  Multiply(R_z1,R_x2, 3, 3, 3, R_zx);
+  float R_zxz[9];
+  Multiply(R_zx, R_z3, 3, 3, 3, R_zxz);      //Euler angle rotation matrix
+
   //calculate quaternions based on current orientation angles
-  q0 = 0.5*sqrt(R_zxz[0] + R_zxz[4] + R_zxz[8] + 1);
-  q1 = 0.25*(1/q0)*(R_zxz[7] - R_zxz[5]);
-  q2 = 0.25*(1/q0)*(R_zxz[2] - R_zxz[6]);
-  q3 = 0.25*(1/q0)*(R_zxz[3] - R_zxz[1]);
+  float q0 = 0.5*sqrt(R_zxz[0] + R_zxz[4] + R_zxz[8] + 1);
+  float q1 = 0.25*(1/q0)*(R_zxz[7] - R_zxz[5]);
+  float q2 = 0.25*(1/q0)*(R_zxz[2] - R_zxz[6]);
+  float q3 = 0.25*(1/q0)*(R_zxz[3] - R_zxz[1]);
   //find difference between current and desired orientation
-  q_0c = q0 - q_0e;
-  q_1c = q1 - q_1e;
-  q_2c = q2 - q_2e;
-  q_3c = q3 - q_3c;
+  float q_0c = q0 - q_0e;
+  float q_1c = q1 - q_1e;
+  float q_2c = q2 - q_2e;
+  float q_3c = q3 - q_3c;
   //populate state vector
   x_c[0] = q_0c;
   x_c[1] = q_1c;
@@ -170,18 +173,21 @@ void loop() {
   x_c[4] = w_xc;
   x_c[5] = w_yc;
   x_c[6] = w_zc;
-  x_c = -1*x_c;
-  void Multiply(K,x_c,3,7,1,u);
+  float neg_one[1] = -1;
+  Multiply(x_c, neg_one, 7,1,1, x_c); // x_c = -1 * x_c
+  Multiply(K,x_c,3,7,1,u);
 
   //need to figure out how a PWM value maps to an angular value
 
-  if(!read_mode){ //If in operation mode, only writing to EEPROM will occur
-    data_node to_log;
-    to_log.roll = roll;
-    to_log.yaw = yaw;
-    to_log.pitch = pitch;
-    to_log.h = h;
+  //also need to determine how to write to EEPROM
+  if(!read_mode && (loop_count % LOG_SKIP == 0) ){ //If in operation mode, only writing to EEPROM will occur
     if(curr_address <= (MAX_EEPROM_ADDR - data_size)){
+      data_node to_log;
+      to_log.roll = roll;
+      to_log.yaw = yaw;
+      to_log.pitch = pitch;
+      to_log.h = h;
+      to_log.t = millis();
       EEPROM.put(curr_address, to_log);
       curr_address += data_size;
       data_info.num_logs++;
@@ -196,16 +202,28 @@ void loop() {
       float yaw_data = data_buffer.yaw;
       float pitch_data = data_buffer.pitch;
       float z_data = data_buffer.z;
-      //Eventually will have to serially communicate data to a computer, writing to some output file
+      unsigned long t_data = data_buffer.t;
+      //Logging a line to the serial monitor
+      print_data_line(t_data, yaw_data, pitch_data, roll_data);
       curr_address += data_info.data_size;
       log_count--;
     }else{
-      //Done with data retrieval, close file on computer
+      //Done with data retrieval, do any closing remarks
     }
 
   }
-
+  loop_count++;
   //probably need a delay in here
 }
 
-void
+void print_data_line(unsigned long t, float yaw, float pitch, float roll){
+  Serial.print(t, DEC);
+  Serial.print(',');
+  Serial.print(yaw, DEC);
+  Serial.print(',');
+  Serial.print(pitch, DEC);
+  Serial.print(',');
+  Serial.print(roll, DEC);
+  Serial.print(',');
+  Serial.println();
+}
