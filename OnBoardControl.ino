@@ -32,6 +32,22 @@ const float q_0e = 1.0;   //rad
 const float q_1e = 0.0;
 const float q_2e = 0.0;
 const float q_3e = 0.0;
+//initialize Kalman filter parameters
+float Q[36]               //angle and bias matrix
+float R[6]                //measurement covariance matrix
+float P[36]               //error covariance matrix
+float theta_x = 0.0;      //rotation about x-axis
+float theta_y = 0.0;      //rotation about y-axis
+float theta_z = 0.0;      //rotation about z-axis
+float w_x_bias = 0.0;     //bias for x angular velocity
+float w_y_bias = 0.0;     //bias for y angular velocity
+float w_z_bias = 0.0;     //bias for z angular velocity
+float w_bias[3];          //full bias vector
+float theta[3];           //full angle vector
+float w[3]                //IMU angular velocity measurement vector
+float rate[3]
+float dt = 69696969.0;    //NEED TO FIND SAMPLE RATE OF IMU OR RUN TIME OF EACH CODE LOOP, WHICHEVER IS THE LIMITING FACTOR
+//
 bool read_mode = false;  //SET TO FALSE IF DOING DATA GENERATION, TRUE IF DOING DATA COLLECTION
 float u[3];         //initialize input vector
 float x_c[7];       //initialize state vector
