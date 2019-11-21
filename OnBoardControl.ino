@@ -151,6 +151,15 @@ void loop() {
   P = bmp.pressure;         //Pressure in Pa
   alt = bmp.readAltitude(sealvl_P);   //altitude in meters
 
+  //calculate N here from previous angles
+  
+  void Multiply(N, w, 3, 3, 1, theta_dot);
+
+  //integrate to get Euler angles
+  theta[0] = dt*theta_dot[0];
+  theta[1] = dt*theta_dot[1];
+  theta[2] = dt*theta_dot[2];
+  
   //generate rotation matrices based on integrated angular velocities
   float R_z1[9] = {cos(theta1), -sin(theta1), 0,
           sin(theta1), cos(theta1), 0,
@@ -190,6 +199,7 @@ void loop() {
   Multiply(K,x_c,3,7,1,u);
 
   //need to figure out how a PWM value maps to an angular value
+  //should be a library to do this for us
 
   //also need to determine how to write to EEPROM
   if(!read_mode && (loop_count % LOG_SKIP == 0) ){ //If in operation mode, only writing to EEPROM will occur
