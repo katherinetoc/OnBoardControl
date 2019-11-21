@@ -31,6 +31,22 @@ const float q_1e = 0.0;
 const float q_2e = 0.0;
 const float q_3e = 0.0;
 bool read_mode = false;
+//initialize Kalman filter parameters
+float Q[36]               //angle and bias matrix
+float R[6]                //measurement covariance matrix
+float P[36]               //error covariance matrix
+float theta_x = 0.0;      //rotation about x-axis
+float theta_y = 0.0;      //rotation about y-axis
+float theta_z = 0.0;      //rotation about z-axis
+float w_x_bias = 0.0;     //bias for x angular velocity
+float w_y_bias = 0.0;     //bias for y angular velocity
+float w_z_bias = 0.0;     //bias for z angular velocity
+float w_bias[3];          //full bias vector
+float theta[3];           //full angle vector
+float w[3]                //IMU angular velocity measurement vector
+float rate[3]
+float dt = 69696969.0;    //NEED TO FIND SAMPLE RATE OF IMU OR RUN TIME OF EACH CODE LOOP, WHICHEVER IS THE LIMITING FACTOR
+//
 float u[3];         //initialize input vector
 float x_c[7];       //initialize state vector
 float R_zx[9];      //initialize Rz*Rx
@@ -110,21 +126,19 @@ void setup() {
 void loop() {
   sensors_event_t accel, mag, gyro, temp;   //read IMU data
   lsm.getEvent(&accel, &mag, &gyro, &temp);   //takes snapshot at time t(i)
-  w_x = gyro.gyro.x;   //angular velocity around x-axis
-  w_y = gyro.gyro.y;   //angular velocity around y-axis
-  w_z = gyro.gyro.z;   //angular velocity around z-axis
+  w[0] = gyro.gyro.x - w_xe;   //angular velocity around x-axis
+  w[1] = gyro.gyro.y - w_ye;   //angular velocity around y-axis
+  w[2] = gyro.gyro.z - wze;   //angular velocity around z-axis
   mag_x = mag.magnetic.x;   //x-comp magnetic field
   mag_y = mag.magnetic.y;   //y-comp
   mag_z = mag.magnetic.z;   //z-comp
   P = bmp.pressure;         //Pressure in Pa
   alt = bmp.readAltitude(sealvl_P);   //altitude in meters
-  //difference between real and desired ang. vel.
-  w_xc = w_x - w_xe;
-  w_yc = w_y - w_ye;
-  w_zc = w_z - w_ze;
 
   //Start Kalman filter
-
+  void Subtraction(w, W_bias, 3, 3, rate);      //find new angular velocities
+  void Addition(theta, dt*rate, 3, 3, theta);   //find new angle
+  
 
   //end Kalman filter
   //generate rotation matrices based on integrated angular velocities
@@ -161,7 +175,6 @@ void loop() {
 
   //need to figure out how a PWM value maps to an angular value
 
-  //also need to determine how to write to EEPROM
   if(!read_mode){ //If in operation mode, only writing to EEPROM will occur
     data_node to_log;
     to_log.roll = roll;
