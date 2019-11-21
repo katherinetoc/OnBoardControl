@@ -32,6 +32,22 @@ const float q_0e = 1.0;   //rad
 const float q_1e = 0.0;
 const float q_2e = 0.0;
 const float q_3e = 0.0;
+//initialize Kalman filter parameters
+float Q[36]               //angle and bias matrix
+float R[6]                //measurement covariance matrix
+float P[36]               //error covariance matrix
+float theta_x = 0.0;      //rotation about x-axis
+float theta_y = 0.0;      //rotation about y-axis
+float theta_z = 0.0;      //rotation about z-axis
+float w_x_bias = 0.0;     //bias for x angular velocity
+float w_y_bias = 0.0;     //bias for y angular velocity
+float w_z_bias = 0.0;     //bias for z angular velocity
+float w_bias[3];          //full bias vector
+float theta[3];           //full angle vector
+float w[3]                //IMU angular velocity measurement vector
+float rate[3]
+float dt = 69696969.0;    //NEED TO FIND SAMPLE RATE OF IMU OR RUN TIME OF EACH CODE LOOP, WHICHEVER IS THE LIMITING FACTOR
+//
 bool read_mode = false;  //SET TO FALSE IF DOING DATA GENERATION, TRUE IF DOING DATA COLLECTION
 float u[3];         //initialize input vector
 float x_c[7];       //initialize state vector
@@ -54,7 +70,7 @@ struct dataNode{
   float roll; //Roll of body
   float h; //Altitude of body
   unsigned long t; //Time of measurement
-  //Add whatever other data to be logged 
+  //Add whatever other data to be logged
 };
 typedef struct dataNode data_node;
 
@@ -81,7 +97,7 @@ void setup() {
   lsm.setupAccel(lsm.LSM9DS1_ACCELRANGE_2G);  //setup acceleration range --> 2g's
   lsm.setupMag(lsm.LSM9DS1_MAGGAIN_4GAUSS);   //setup magnetometer range --> 4 Gauss
   lsm.setupGyro(lsm.LSM9DS1_GYROSCALE_245DPS);    //setup gryroscope range --> 245 degrees per second
-  
+
   if (!bmp.begin()) {
     Serial.println("Altimeter didnt' open up right. Infinite looping now.");
     while (1);
@@ -99,7 +115,7 @@ void setup() {
     curr_address = data_size;
     log_count = data_info.num_logs;
     Serial.print("Time(ms), Yaw(deg), Pitch(deg), Roll(deg)");
-    
+
   }
 
   //float A[49] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
@@ -124,22 +140,14 @@ void setup() {
 void loop() {
   sensors_event_t accel, mag, gyro, temp;   //read IMU data
   lsm.getEvent(&accel, &mag, &gyro, &temp);   //takes snapshot at time t(i)
-  float w_x = gyro.gyro.x;   //angular velocity around x-axis
-  float w_y = gyro.gyro.y;   //angular velocity around y-axis
-  float w_z = gyro.gyro.z;   //angular velocity around z-axis
-  float mag_x = mag.magnetic.x;   //x-comp magnetic field
-  float mag_y = mag.magnetic.y;   //y-comp
-  float mag_z = mag.magnetic.z;   //z-comp
-  float P = bmp.pressure;         //Pressure in Pa
-  float alt = bmp.readAltitude(sealvl_P);   //altitude in meters
-  //difference between real and desired ang. vel.
-  float w_xc = w_x - w_xe;    
-  float w_yc = w_y - w_ye;
-  float w_zc = w_z - w_ze;
-  
-  //insert filter here
-  //using Kalman filter
-  //then integrate angular velocities to get angles
+  w[0] = gyro.gyro.x - w_xe;   //angular velocity around x-axis
+  w[1] = gyro.gyro.y - w_ye;   //angular velocity around y-axis
+  w[2] = gyro.gyro.z - wze;   //angular velocity around z-axis
+  mag_x = mag.magnetic.x;   //x-comp magnetic field
+  mag_y = mag.magnetic.y;   //y-comp
+  mag_z = mag.magnetic.z;   //z-comp
+  P = bmp.pressure;         //Pressure in Pa
+  alt = bmp.readAltitude(sealvl_P);   //altitude in meters
 
   //generate rotation matrices based on integrated angular velocities
   float R_z1[9] = {cos(theta1), -sin(theta1), 0,
@@ -156,7 +164,7 @@ void loop() {
   Multiply(R_z1,R_x2, 3, 3, 3, R_zx);
   float R_zxz[9];
   Multiply(R_zx, R_z3, 3, 3, 3, R_zxz);      //Euler angle rotation matrix
-  
+
   //calculate quaternions based on current orientation angles
   float q0 = 0.5*sqrt(R_zxz[0] + R_zxz[4] + R_zxz[8] + 1);
   float q1 = 0.25*(1/q0)*(R_zxz[7] - R_zxz[5]);
