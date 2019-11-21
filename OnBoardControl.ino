@@ -32,22 +32,9 @@ const float q_0e = 1.0;   //rad
 const float q_1e = 0.0;
 const float q_2e = 0.0;
 const float q_3e = 0.0;
-//initialize Kalman filter parameters
-float Q[36]               //angle and bias matrix
-float R[6]                //measurement covariance matrix
-float P[36]               //error covariance matrix
-float theta_x = 0.0;      //rotation about x-axis
-float theta_y = 0.0;      //rotation about y-axis
-float theta_z = 0.0;      //rotation about z-axis
-float w_x_bias = 0.0;     //bias for x angular velocity
-float w_y_bias = 0.0;     //bias for y angular velocity
-float w_z_bias = 0.0;     //bias for z angular velocity
-float w_bias[3];          //full bias vector
-float theta[3];           //full angle vector
-float w[3]                //IMU angular velocity measurement vector
-float rate[3]
-float dt = 69696969.0;    //NEED TO FIND SAMPLE RATE OF IMU OR RUN TIME OF EACH CODE LOOP, WHICHEVER IS THE LIMITING FACTOR
-//
+float dt = something;       //find this out
+float theta[3];             //Euler angle vector
+float theta_dot[3];         //time derivatives of Euler angles
 bool read_mode = false;  //SET TO FALSE IF DOING DATA GENERATION, TRUE IF DOING DATA COLLECTION
 float u[3];         //initialize input vector
 float x_c[7];       //initialize state vector
@@ -149,12 +136,15 @@ void loop() {
   P = bmp.pressure;         //Pressure in Pa
   alt = bmp.readAltitude(sealvl_P);   //altitude in meters
 
-  //Start Kalman filter
-  void Subtraction(w, W_bias, 3, 3, rate);      //find new angular velocities
-  void Addition(theta, dt*rate, 3, 3, theta);   //find new angle
+  //calculate N here from previous angles
+  
+  void Multiply(N, w, 3, 3, 1, theta_dot);
 
-
-  //end Kalman filter
+  //integrate to get Euler angles
+  theta[0] = dt*theta_dot[0];
+  theta[1] = dt*theta_dot[1];
+  theta[2] = dt*theta_dot[2];
+  
   //generate rotation matrices based on integrated angular velocities
   float R_z1[9] = {cos(theta1), -sin(theta1), 0,
           sin(theta1), cos(theta1), 0,
@@ -194,6 +184,7 @@ void loop() {
   Multiply(K,x_c,3,7,1,u);
 
   //need to figure out how a PWM value maps to an angular value
+  //should be a library to do this for us
 
   //also need to determine how to write to EEPROM
   if(!read_mode && (loop_count % LOG_SKIP == 0) ){ //If in operation mode, only writing to EEPROM will occur
