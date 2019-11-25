@@ -1,3 +1,4 @@
+#include <Servo.h>
 #include <MatrixMath.h>
 #include <Adafruit_BMP3XX.h>
 #include <bmp3.h>
@@ -38,8 +39,22 @@ float theta_dot[3];         //time derivatives of Euler angles
 bool read_mode = false;  //SET TO FALSE IF DOING DATA GENERATION, TRUE IF DOING DATA COLLECTION
 float u[3];         //initialize input vector
 float x_c[7];       //initialize state vector
-float R_zx[9];      //initialize Rz*Rx
-float R_zxz[9];     //initialize full Rz*Rx*Rz rotation matrix
+float R_zy[9];      //initialize Rz*Rx
+float R_zyx[9];     //initialize full Rz*Rx*Rz rotation matrix     
+float N1[9];         //part of ang vel to ang rates matrix
+float N11[3];
+float N2[9];
+float N[9];
+float Ninv[9];
+float z_id[3] = {0, 
+                 0,
+                 1};
+float y_id[3] = {0,
+                 1,
+                 0};
+float x_id[3] = {1,
+                 0,
+                 0};
 float K[21] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
                   0.0000, 0.4000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000,
                   0.0000, 1.5000, 0.0500, 0.2500, 0.2500, 0.1500, 0.3500 };   //tentative gain matrix. Negative real eigenvalues for A-BK. Can be tuned further if needed.
@@ -137,8 +152,20 @@ void loop() {
   alt = bmp.readAltitude(sealvl_P);   //altitude in meters
 
   //calculate N here from previous angles
-  
-  void Multiply(N, w, 3, 3, 1, theta_dot);
+  void Multiply(R_y2, R_x2, 3, 3, 3 N1);
+  void Multiply(N1, z_id, 3, 3, 1, N11);
+  void Multiply(R_x, y_id, 3, 3, 1, N2);
+  N[0] = N11[0];
+  N[1} = N11[1];
+  N[2] = N11[2];
+  N[3] = N2[0];
+  N[4] = N2[1];
+  N[5] = N2[2];
+  N[6] = x_id[0];
+  N[7] = x_id[1];
+  N[8] = x_id[2];
+  int MatrixInversion(N, 3, Ninv);
+  void Multiply(Ninv, w, 3, 3, 1, theta_dot);
 
   //integrate to get Euler angles
   theta[0] = dt*theta_dot[0];
@@ -146,26 +173,26 @@ void loop() {
   theta[2] = dt*theta_dot[2];
   
   //generate rotation matrices based on integrated angular velocities
-  float R_z1[9] = {cos(theta1), -sin(theta1), 0,
-          sin(theta1), cos(theta1), 0,
+  float R_z1[9] = {cos(theta[0]), -sin(theta[0]), 0,
+          sin(theta[0]), cos(theta[0]), 0,
           0, 0, 1};
-  float R_x2[9] = {1, 0, 0,
-          0, cos(theta2), sin(theta2),
-          0, sin(theta2), cos(theta2)};
-  float R_z3[9] = {cos(theta3), -sin(theta3), 0,
-          sin(theta3), cos(theta3), 0,
-          0, 0, 1};
+  float R_y2[9] = {cos(theta[1]), 0, sin(theta[1]),
+          0, 1, 0,
+          -sin(theta[1]), 0, cos(theta[1])};
+  float R_x3[9] = {1, 0, 0,
+          0, cos(theta[2]), -sin(theta[2]),
+          0, cos(theta[2]), sin(theta[2])};
 
   float R_zx[9];
-  Multiply(R_z1,R_x2, 3, 3, 3, R_zx);
+  Multiply(R_z1,R_y2, 3, 3, 3, R_zy);
   float R_zxz[9];
-  Multiply(R_zx, R_z3, 3, 3, 3, R_zxz);      //Euler angle rotation matrix
+  Multiply(R_zy, R_x3, 3, 3, 3, R_zyx);      //Euler angle rotation matrix
 
   //calculate quaternions based on current orientation angles
   float q0 = 0.5*sqrt(R_zxz[0] + R_zxz[4] + R_zxz[8] + 1);
-  float q1 = 0.25*(1/q0)*(R_zxz[7] - R_zxz[5]);
-  float q2 = 0.25*(1/q0)*(R_zxz[2] - R_zxz[6]);
-  float q3 = 0.25*(1/q0)*(R_zxz[3] - R_zxz[1]);
+  float q1 = 0.25*(1/q0)*(R_zyx[7] - R_zyx[5]);
+  float q2 = 0.25*(1/q0)*(R_zyx[2] - R_zyx[6]);
+  float q3 = 0.25*(1/q0)*(R_zyx[3] - R_zyx[1]);
   //find difference between current and desired orientation
   float q_0c = q0 - q_0e;
   float q_1c = q1 - q_1e;
