@@ -1,3 +1,4 @@
+#include <Adafruit_PWMServoDriver.h>
 #include <Servo.h>
 #include <MatrixMath.h>
 #include <Adafruit_BMP3XX.h>
@@ -20,6 +21,12 @@
 #define sealvl_P (69)     //Pa                                //**CHANGE ON DAY OF LAUNCH**
 #define MAX_EEPROM_ADDR 65536
 #define LOG_SKIP 100
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40, Wire);
+#define SERVOMIN  150 // This is the 'minimum' pulse length count (out of 4096)
+#define SERVOMAX  600 // This is the 'maximum' pulse length count (out of 4096)
+#define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
+#define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
+#define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
 
 Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1(); // i2c sensor
 Adafruit_BMP3XX bmp; // I2C
@@ -119,6 +126,9 @@ void setup() {
     Serial.print("Time(ms), Yaw(deg), Pitch(deg), Roll(deg)");
 
   }
+  pwm.begin();
+  pwm.setOscillatorFrequency(27000000);  // The int.osc. is closer to 27MHz  
+  pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
 
   //float A[49] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
   //                0.0000, 0.0000, 0.0000, 0.0000, 0.5000, 0.0000, 0.0000,
