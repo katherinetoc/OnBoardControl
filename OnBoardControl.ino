@@ -67,7 +67,7 @@ unsigned long loop_count = 0;
 struct dataNode{
   float roll; //Roll of body
   float yaw; //Yaw of body
-  float roll; //Roll of body
+  float pitch; //Roll of body
   float h; //Altitude of body
   unsigned long t; //Time of measurement
   //Add whatever other data to be logged
@@ -205,9 +205,9 @@ void loop() {
   if(!read_mode && (loop_count % LOG_SKIP == 0) ){ //If in operation mode, only writing to EEPROM will occur
     if(curr_address <= (MAX_EEPROM_ADDR - data_size)){
       data_node to_log;
-      to_log.roll = roll;
-      to_log.yaw = yaw;
-      to_log.pitch = pitch;
+      to_log.roll = roll_integ;
+      to_log.yaw = yaw_integ;
+      to_log.pitch = pitch_integ;
       to_log.h = h;
       to_log.t = millis();
       EEPROM.put(curr_address, to_log);
