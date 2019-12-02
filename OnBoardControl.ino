@@ -11,6 +11,7 @@
 #include <WireKinetis.h>
 #include <EEPROM.h>
 #include <Math.h>
+#define PI 3.1415926535897932384626433832795
 #define SDA0 18
 #define SDA1 17
 #define SCL0 19
@@ -41,13 +42,26 @@ const float q_0e = 1.0;   //rad
 const float q_1e = 0.0;
 const float q_2e = 0.0;
 const float q_3e = 0.0;
-float dt = something;       //find this out
+float dt = 1.0/200.0;       //guess for right now, in seconds
 float theta[3];             //Euler angle vector
 float theta_dot[3];         //time derivatives of Euler angles
 bool read_mode = false;  //SET TO FALSE IF DOING DATA GENERATION, TRUE IF DOING DATA COLLECTION
+float w[3];          //angular velocity vector
+float mag_x;         //x-comp magnetic field
+float mag_y;         //y-comp magnetic field
+float mag_z;         //z-comp magnetic field
+float roll;
+float pitch;
+float yaw;
+float P;              //Pressure at current rocket altitude
+float alt;            //current rocket altitude 
 float u[3];         //initialize input vector
 float x_c[7];       //initialize state vector
-float R_zy[9];      //initialize Rz*Rx
+float w_xc;
+float w_yc;
+float w_zc;
+float R_y2[9];      
+float R_x2[9];
 float R_zyx[9];     //initialize full Rz*Rx*Rz rotation matrix     
 float N1[9];         //part of ang vel to ang rates matrix
 float N11[3];
@@ -70,14 +84,14 @@ float K[21] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
 int curr_address = 0;
 int num_logs = 0;
 int data_size = 0;
-meta_data_node data_info;
+//meta_data_node data_info;
 int log_count = 0;
 unsigned long loop_count = 0;
 
 struct dataNode{
   float roll; //Roll of body
   float yaw; //Yaw of body
-  float roll; //Roll of body
+  float pitch; //Roll of body
   float h; //Altitude of body
   unsigned long t; //Time of measurement
   //Add whatever other data to be logged
@@ -155,7 +169,7 @@ void loop() {
   lsm.getEvent(&accel, &mag, &gyro, &temp);   //takes snapshot at time t(i)
   w[0] = gyro.gyro.x - w_xe;   //angular velocity around x-axis
   w[1] = gyro.gyro.y - w_ye;   //angular velocity around y-axis
-  w[2] = gyro.gyro.z - wze;   //angular velocity around z-axis
+  w[2] = gyro.gyro.z - w_ze;   //angular velocity around z-axis
   mag_x = mag.magnetic.x;   //x-comp magnetic field
   mag_y = mag.magnetic.y;   //y-comp
   mag_z = mag.magnetic.z;   //z-comp
@@ -164,11 +178,11 @@ void loop() {
   //add in if statement to close iris.
 
   //calculate N here from previous angles
-  void Multiply(R_y2, R_x2, 3, 3, 3 N1);
+  void Multiply(R_y2, R_x2, 3, 3, 3, N1);
   void Multiply(N1, z_id, 3, 3, 1, N11);
   void Multiply(R_x, y_id, 3, 3, 1, N2);
   N[0] = N11[0];
-  N[1} = N11[1];
+  N[1] = N11[1];
   N[2] = N11[2];
   N[3] = N2[0];
   N[4] = N2[1];
@@ -185,19 +199,18 @@ void loop() {
   theta[2] = dt*theta_dot[2];
   
   //generate rotation matrices based on integrated angular velocities
-  float R_z1[9] = {cos(theta[0]), -sin(theta[0]), 0,
-          sin(theta[0]), cos(theta[0]), 0,
-          0, 0, 1};
-  float R_y2[9] = {cos(theta[1]), 0, sin(theta[1]),
-          0, 1, 0,
-          -sin(theta[1]), 0, cos(theta[1])};
-  float R_x3[9] = {1, 0, 0,
-          0, cos(theta[2]), -sin(theta[2]),
-          0, cos(theta[2]), sin(theta[2])};
+  double R_z1[9] = {cos(theta[0]), -sin(theta[0]), 0.0,
+          sin(theta[0]), cos(theta[0]), 0.0,
+          0.0, 0.0, 1.0};
+  double R_y2[9] = {cos(theta[1]), 0, sin(theta[1]),
+          0.0, 1.0, 0.0,
+          -sin(theta[1]), 0.0, cos(theta[1])};
+  double R_x3[9] = {1.0, 0.0, 0.0,
+          0.0, cos(theta[2]), -sin(theta[2]),
+          0.0, cos(theta[2]), sin(theta[2])};
 
-  float R_zx[9];
+  float R_zy[9];
   Multiply(R_z1,R_y2, 3, 3, 3, R_zy);
-  float R_zxz[9];
   Multiply(R_zy, R_x3, 3, 3, 3, R_zyx);      //Euler angle rotation matrix
 
   //calculate quaternions based on current orientation angles
@@ -218,19 +231,19 @@ void loop() {
   x_c[4] = w_xc;
   x_c[5] = w_yc;
   x_c[6] = w_zc;
-  float neg_one[1] = -1;
+  float neg_one[1] = [-1];
   Multiply(x_c, neg_one, 7,1,1, x_c); // x_c = -1 * x_c
   Multiply(K,x_c,3,7,1,u);
   //convert back to euler angles
-  theta1 = (pi/180)*atan((2*(x_c[0]*x_c[1] + x_c[2]*x_c[3]))/(1 - 2*(x_c[1]^2 + x_c[2]^2)));
-  theta2 = (pi/180)*asin(2*(x_c[0]*x_c[2] - x_c[3]*x_c[1]));
-  theta3 = (pi/180)*atan((2*(x_c[0]*x_c[3] + x_c[1]*x_c[2]))/(1 - 2*(x_c[2]^2 + x_c[3]^2)));
+  theta[1] = (PI/180.0)*atan((2*(x_c[0]*x_c[1] + x_c[2]*x_c[3]))/(1 - 2*(sq(x_c[1]) + sq(x_c[2]))));
+  theta[2] = (PI/180.0)*asin(2*(x_c[0]*x_c[2] - x_c[3]*x_c[1]));
+  theta[3] = (PI/180.0)*atan((2*(x_c[0]*x_c[3] + x_c[1]*x_c[2]))/(1 - 2*(sq(x_c[2]) + sq(x_c[3]))));
   
   
   //need to figure out how a PWM value maps to an angular value
-  pulselength1 = map(theta1, 0, 180, SERVOMIN, SERVOMAX);
-  pulselength2 = map(theta2, 0, 180, SERVOMIN, SERVOMAX);
-  pulselength3 = map(theta3, 0, 180, SERVOMIN, SERVOMAX);
+  pulselength1 = map(theta[1], 0, 180, SERVOMIN, SERVOMAX);
+  pulselength2 = map(theta[2], 0, 180, SERVOMIN, SERVOMAX);
+  pulselength3 = map(theta[3], 0, 180, SERVOMIN, SERVOMAX);
   pwm.setPWM(servonum_placehold, 0, pulselength1);
   pwm.setPWM(servonum_placehold, 0, pulselength2);
   pwm.setPWM(servonum_placehold, 0, pulselength3);
