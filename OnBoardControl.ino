@@ -10,6 +10,7 @@
 #include <WireIMXRT.h>
 #include <WireKinetis.h>
 #include <EEPROM.h>
+#include <Math.h>
 #define SDA0 18
 #define SDA1 17
 #define SCL0 19
@@ -160,6 +161,7 @@ void loop() {
   mag_z = mag.magnetic.z;   //z-comp
   P = bmp.pressure;         //Pressure in Pa
   alt = bmp.readAltitude(sealvl_P);   //altitude in meters
+  //add in if statement to close iris.
 
   //calculate N here from previous angles
   void Multiply(R_y2, R_x2, 3, 3, 3 N1);
@@ -219,11 +221,20 @@ void loop() {
   float neg_one[1] = -1;
   Multiply(x_c, neg_one, 7,1,1, x_c); // x_c = -1 * x_c
   Multiply(K,x_c,3,7,1,u);
-
+  //convert back to euler angles
+  theta1 = (pi/180)*atan((2*(x_c[0]*x_c[1] + x_c[2]*x_c[3]))/(1 - 2*(x_c[1]^2 + x_c[2]^2)));
+  theta2 = (pi/180)*asin(2*(x_c[0]*x_c[2] - x_c[3]*x_c[1]));
+  theta3 = (pi/180)*atan((2*(x_c[0]*x_c[3] + x_c[1]*x_c[2]))/(1 - 2*(x_c[2]^2 + x_c[3]^2)));
+  
+  
   //need to figure out how a PWM value maps to an angular value
-  //should be a library to do this for us
-
-  //also need to determine how to write to EEPROM
+  pulselength1 = map(theta1, 0, 180, SERVOMIN, SERVOMAX);
+  pulselength2 = map(theta2, 0, 180, SERVOMIN, SERVOMAX);
+  pulselength3 = map(theta3, 0, 180, SERVOMIN, SERVOMAX);
+  pwm.setPWM(servonum_placehold, 0, pulselength1);
+  pwm.setPWM(servonum_placehold, 0, pulselength2);
+  pwm.setPWM(servonum_placehold, 0, pulselength3);
+  
   if(!read_mode && (loop_count % LOG_SKIP == 0) ){ //If in operation mode, only writing to EEPROM will occur
     if(curr_address <= (MAX_EEPROM_ADDR - data_size)){
       data_node to_log;
