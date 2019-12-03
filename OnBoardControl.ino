@@ -1,3 +1,5 @@
+#include <Adafruit_PWMServoDriver.h>
+#include <Servo.h>
 #include <MatrixMath.h>
 #include <Adafruit_BMP3XX.h>
 #include <bmp3.h>
@@ -8,6 +10,8 @@
 #include <WireIMXRT.h>
 #include <WireKinetis.h>
 #include <EEPROM.h>
+#include <Math.h>
+#define PI 3.1415926535897932384626433832795
 #define SDA0 18
 #define SDA1 17
 #define SCL0 19
@@ -17,8 +21,14 @@
 #define iris 15
 #define reac 23
 #define sealvl_P (69)     //Pa                                //**CHANGE ON DAY OF LAUNCH**
-#define MAX_EEPROM_ADDR 65536   //Highest addressable memory in EEPROM (maybe)
-#define LOG_SKIP 100       //Number of readings to skip between logs
+#define MAX_EEPROM_ADDR 65536
+#define LOG_SKIP 100
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40, Wire);
+#define SERVOMIN  150 // This is the 'minimum' pulse length count (out of 4096)
+#define SERVOMAX  600 // This is the 'maximum' pulse length count (out of 4096)
+#define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
+#define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
+#define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
 
 Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1(); // i2c sensor
 Adafruit_BMP3XX bmp; // I2C
@@ -32,35 +42,48 @@ const float q_0e = 1.0;   //rad
 const float q_1e = 0.0;
 const float q_2e = 0.0;
 const float q_3e = 0.0;
-//initialize Kalman filter parameters
-float Q[36];               //angle and bias matrix
-float R[6];                //measurement covariance matrix
-float P[36];               //error covariance matrix
-float theta_x = 0.0;      //rotation about x-axis
-float theta_y = 0.0;      //rotation about y-axis
-float theta_z = 0.0;      //rotation about z-axis
-float w_x_bias = 0.0;     //bias for x angular velocity
-float w_y_bias = 0.0;     //bias for y angular velocity
-float w_z_bias = 0.0;     //bias for z angular velocity
-float w_bias[3];          //full bias vector
-float theta[3];           //full angle vector
-float w[3];                //IMU angular velocity measurement vector
-float rate[3];
-float dt = 69696969.0;    //NEED TO FIND SAMPLE RATE OF IMU OR RUN TIME OF EACH CODE LOOP, WHICHEVER IS THE LIMITING FACTOR
-//
+float dt = 1.0/200.0;       //guess for right now, in seconds
+double theta[3] = {0.0, 0.0, 0.0};             //Euler angle vector assumed initially at all 0 deg
+double theta_dot[3];         //time derivatives of Euler angles
 bool read_mode = false;  //SET TO FALSE IF DOING DATA GENERATION, TRUE IF DOING DATA COLLECTION
-float u[3];         //initialize input vector
-float x_c[7];       //initialize state vector
-float R_zx[9];      //initialize Rz*Rx
-float R_zxz[9];     //initialize full Rz*Rx*Rz rotation matrix
-float K[21] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
+double w[3];          //angular velocity vector
+float mag_x;         //x-comp magnetic field
+float mag_y;         //y-comp magnetic field
+float mag_z;         //z-comp magnetic field
+float roll;
+float pitch;
+float yaw;
+float P;              //Pressure at current rocket altitude
+float alt;            //current rocket altitude 
+double u[3];         //initialize input vector
+double x_c[7];       //initialize state vector
+float w_xc;
+float w_yc;
+float w_zc;
+double R_y2[9];      
+double R_x2[9];
+double R_zyx[9];     //initialize full Rz*Rx*Rz rotation matrix     
+double N1[9];         //part of ang vel to ang rates matrix
+double N11[3];
+double N2[9];
+double N[9];
+double z_id[3] = {0, 
+                 0,
+                 1};
+double y_id[3] = {0,
+                 1,
+                 0};
+double x_id[3] = {1,
+                 0,
+                 0};
+double K[21] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
                   0.0000, 0.4000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000,
                   0.0000, 1.5000, 0.0500, 0.2500, 0.2500, 0.1500, 0.3500 };   //tentative gain matrix. Negative real eigenvalues for A-BK. Can be tuned further if needed.
 
 int curr_address = 0;
 int num_logs = 0;
 int data_size = 0;
-
+//meta_data_node data_info;
 int log_count = 0;
 unsigned long loop_count = 0;
 
@@ -92,7 +115,7 @@ void setup() {
   pinMode(iris,OUTPUT);    //iris servo
   pinMode(TVC1,OUTPUT);    //TVC servo 1
   pinMode(TVC2,OUTPUT);    //TVC servo 2
-  if(!lsm.begin(SDA0)){
+  if(!lsm.begin(/*SDA0*/)){
     Serial.println("IMU didn't open up right. Infinite looping now.");
     while(1);
   }
@@ -119,6 +142,9 @@ void setup() {
     Serial.print("Time(ms), Yaw(deg), Pitch(deg), Roll(deg)");
 
   }
+  pwm.begin();
+  pwm.setOscillatorFrequency(27000000);  // The int.osc. is closer to 27MHz  
+  pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
 
   //float A[49] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
   //                0.0000, 0.0000, 0.0000, 0.0000, 0.5000, 0.0000, 0.0000,
@@ -136,7 +162,6 @@ void setup() {
  //                 0.0000, 82.9891, 0.0000,
  //                 0.0000, 0.0000, 82.9891 };
 
-  
 }
 
 void loop() {
@@ -144,43 +169,57 @@ void loop() {
   lsm.getEvent(&accel, &mag, &gyro, &temp);   //takes snapshot at time t(i)
   w[0] = gyro.gyro.x - w_xe;   //angular velocity around x-axis
   w[1] = gyro.gyro.y - w_ye;   //angular velocity around y-axis
-  w[2] = gyro.gyro.z - wze;   //angular velocity around z-axis
+  w[2] = gyro.gyro.z - w_ze;   //angular velocity around z-axis
   mag_x = mag.magnetic.x;   //x-comp magnetic field
   mag_y = mag.magnetic.y;   //y-comp
   mag_z = mag.magnetic.z;   //z-comp
   P = bmp.pressure;         //Pressure in Pa
   alt = bmp.readAltitude(sealvl_P);   //altitude in meters
+  //add in if statement to close iris.
 
   //calculate N here from previous angles
+  //generate rotation matrices based on integrated angular velocities
+  double R_z1[9] = {cos(theta[0]), -sin(theta[0]), 0.0,
+          sin(theta[0]), cos(theta[0]), 0.0,
+          0.0, 0.0, 1.0};
+  double R_y2[9] = {cos(theta[1]), 0, sin(theta[1]),
+          0.0, 1.0, 0.0,
+          -sin(theta[1]), 0.0, cos(theta[1])};
+  double R_x3[9] = {1.0, 0.0, 0.0,
+          0.0, cos(theta[2]), -sin(theta[2]),
+          0.0, cos(theta[2]), sin(theta[2])};
   
-  void Multiply(N, w, 3, 3, 1, theta_dot);
+  Matrix.Multiply((mtx_type*)R_y2, (mtx_type*)R_x3, 3, 3, 3, (mtx_type*)N1);
+  Matrix.Multiply((mtx_type*)N1, (mtx_type*)z_id, 3, 3, 1, (mtx_type*)N11);
+  Matrix.Multiply((mtx_type*)R_x3, (mtx_type*)y_id, 3, 3, 1, (mtx_type*)N2);
+  N[0] = N11[0];
+  N[1] = N11[1];
+  N[2] = N11[2];
+  N[3] = N2[0];
+  N[4] = N2[1];
+  N[5] = N2[2];
+  N[6] = x_id[0];
+  N[7] = x_id[1];
+  N[8] = x_id[2];
+  Matrix.Invert(N, 3);
+  Matrix.Multiply((mtx_type*)N, (mtx_type*)w, 3, 3, 1, (mtx_type*)theta_dot);
 
   //integrate to get Euler angles
   theta[0] = dt*theta_dot[0];
   theta[1] = dt*theta_dot[1];
   theta[2] = dt*theta_dot[2];
   
-  //generate rotation matrices based on integrated angular velocities
-  float R_z1[9] = {cos(theta1), -sin(theta1), 0,
-          sin(theta1), cos(theta1), 0,
-          0, 0, 1};
-  float R_x2[9] = {1, 0, 0,
-          0, cos(theta2), sin(theta2),
-          0, sin(theta2), cos(theta2)};
-  float R_z3[9] = {cos(theta3), -sin(theta3), 0,
-          sin(theta3), cos(theta3), 0,
-          0, 0, 1};
+  
 
-  float R_zx[9];
-  Multiply(R_z1,R_x2, 3, 3, 3, R_zx);
-  float R_zxz[9];
-  Multiply(R_zx, R_z3, 3, 3, 3, R_zxz);      //Euler angle rotation matrix
+  float R_zy[9];
+  Matrix.Multiply((mtx_type*)R_z1, (mtx_type*)R_y2, 3, 3, 3, (mtx_type*)R_zy);
+  Matrix.Multiply((mtx_type*)R_zy, (mtx_type*)R_x3, 3, 3, 3, (mtx_type*)R_zyx);      //Euler angle rotation matrix
 
   //calculate quaternions based on current orientation angles
-  float q0 = 0.5*sqrt(R_zxz[0] + R_zxz[4] + R_zxz[8] + 1);
-  float q1 = 0.25*(1/q0)*(R_zxz[7] - R_zxz[5]);
-  float q2 = 0.25*(1/q0)*(R_zxz[2] - R_zxz[6]);
-  float q3 = 0.25*(1/q0)*(R_zxz[3] - R_zxz[1]);
+  float q0 = 0.5*sqrt(R_zyx[0] + R_zyx[4] + R_zyx[8] + 1); //CHANGED FROM ZXZ to ZYX
+  float q1 = 0.25*(1/q0)*(R_zyx[7] - R_zyx[5]);
+  float q2 = 0.25*(1/q0)*(R_zyx[2] - R_zyx[6]);
+  float q3 = 0.25*(1/q0)*(R_zyx[3] - R_zyx[1]);
   //find difference between current and desired orientation
   float q_0c = q0 - q_0e;
   float q_1c = q1 - q_1e;
@@ -194,21 +233,30 @@ void loop() {
   x_c[4] = w_xc;
   x_c[5] = w_yc;
   x_c[6] = w_zc;
-  float neg_one[1] = -1;
-  Multiply(x_c, neg_one, 7,1,1, x_c); // x_c = -1 * x_c
-  Multiply(K,x_c,3,7,1,u);
-
+  double neg_one[1] = {-1.0};
+  Matrix.Multiply((mtx_type*)x_c, (mtx_type*)neg_one, 7,1,1, (mtx_type*)x_c); // x_c = -1 * x_c
+  Matrix.Multiply((mtx_type*)K, (mtx_type*)x_c,3,7,1,(mtx_type*)u);
+  //convert back to euler angles
+  theta[1] = (PI/180.0)*atan((2*(x_c[0]*x_c[1] + x_c[2]*x_c[3]))/(1 - 2*(sq(x_c[1]) + sq(x_c[2]))));
+  theta[2] = (PI/180.0)*asin(2*(x_c[0]*x_c[2] - x_c[3]*x_c[1]));
+  theta[3] = (PI/180.0)*atan((2*(x_c[0]*x_c[3] + x_c[1]*x_c[2]))/(1 - 2*(sq(x_c[2]) + sq(x_c[3]))));
+  
+  
   //need to figure out how a PWM value maps to an angular value
-  //should be a library to do this for us
-
-  //also need to determine how to write to EEPROM
+  long pulselength1 = map((long)theta[1], 0, 180, SERVOMIN, SERVOMAX);
+  long pulselength2 = map((long)theta[2], 0, 180, SERVOMIN, SERVOMAX);
+  long pulselength3 = map((long)theta[3], 0, 180, SERVOMIN, SERVOMAX);
+  //pwm.setPWM(servonum_placehold, 0, pulselength1);
+  //pwm.setPWM(servonum_placehold, 0, pulselength2);
+  //pwm.setPWM(servonum_placehold, 0, pulselength3);
+  
   if(!read_mode && (loop_count % LOG_SKIP == 0) ){ //If in operation mode, only writing to EEPROM will occur
     if(curr_address <= (MAX_EEPROM_ADDR - data_size)){
       data_node to_log;
-      to_log.roll = roll_integ;
-      to_log.yaw = yaw_integ;
-      to_log.pitch = pitch_integ;
-      to_log.h = h;
+      to_log.roll = theta[2];
+      to_log.yaw = theta[0];
+      to_log.pitch = theta[1];
+      to_log.h = alt;
       to_log.t = millis();
       EEPROM.put(curr_address, to_log);
       curr_address += data_size;
@@ -218,12 +266,12 @@ void loop() {
     }
   }else{ //If in collection mode, only reading from EEPROM will occur
     if(log_count > 0){
-      meta_data_node data_buffer;
+      data_node data_buffer;
       EEPROM.get(curr_address, data_buffer);
       float roll_data = data_buffer.roll;
       float yaw_data = data_buffer.yaw;
       float pitch_data = data_buffer.pitch;
-      float z_data = data_buffer.z;
+      float h_data = data_buffer.h;
       unsigned long t_data = data_buffer.t;
       //Logging a line to the serial monitor
       print_data_line(t_data, yaw_data, pitch_data, roll_data);
@@ -231,6 +279,7 @@ void loop() {
       log_count--;
     }else{
       //Done with data retrieval, do any closing remarks
+      Serial.println("End of EEPROM data");
     }
     
   }
