@@ -73,6 +73,8 @@ double N1[9];         //part of ang vel to ang rates matrix
 double N11[3];
 double N2[9];
 double N[9];
+const int acc_buffer_size = 5;
+double acc_buffer[acc_buffer_size];
 double z_id[3] = {0, 
                  0,
                  1};
@@ -93,6 +95,8 @@ int data_size = 0;
 //meta_data_node data_info;
 int log_count = 0;
 unsigned long loop_count = 0;
+unsigned long prev_time = 0;
+unsigned long curr_time = 0;
 
 struct dataNode{
   float roll; //Roll of body
@@ -168,7 +172,7 @@ void setup() {
  //                 986.6935, 0.0000, 0.0000,
  //                 0.0000, 82.9891, 0.0000,
  //                 0.0000, 0.0000, 82.9891 };
-
+  prev_time = millis();
 }
 
 void loop() {
@@ -190,8 +194,14 @@ void loop() {
     logging_active = 1;
   }
   
-  float acc_mag_sq = acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2];
-  if(acc_mag_sq < 1.0){ //Is this a reasonable buffer zone for free-fall phase acceleration?
+  float acc_mag = sqrt(acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2]);
+  acc_buffer[loop_count % acc_buffer_size] = acc_mag;
+  float acc_sum = 0;
+  for(int i = 0; i < acc_buffer_size; i++){
+    acc_sum += acc_buffer[i];
+  }
+  
+  if(acc_sum < 1.0){ //Is this a reasonable buffer for free-fall phase acceleration?
     descent_mode = 1;
   }
   
@@ -235,10 +245,7 @@ void loop() {
   Matrix.Invert(N, 3);
   Matrix.Multiply((mtx_type*)N, (mtx_type*)w, 3, 3, 1, (mtx_type*)theta_dot);
 
-  //integrate to get Euler angles
-  theta[0] = dt*theta_dot[0];
-  theta[1] = dt*theta_dot[1];
-  theta[2] = dt*theta_dot[2];
+  
   
   
 
@@ -271,7 +278,13 @@ void loop() {
   theta[1] = (PI/180.0)*atan((2*(x_c[0]*x_c[1] + x_c[2]*x_c[3]))/(1 - 2*(sq(x_c[1]) + sq(x_c[2]))));
   theta[2] = (PI/180.0)*asin(2*(x_c[0]*x_c[2] - x_c[3]*x_c[1]));
   theta[3] = (PI/180.0)*atan((2*(x_c[0]*x_c[3] + x_c[1]*x_c[2]))/(1 - 2*(sq(x_c[2]) + sq(x_c[3]))));
-  
+
+  //integrate to get Euler angles
+  curr_time = millis();
+  theta[0] = ((curr_time - prev_time)/1000.0)*theta_dot[0] + theta[0];
+  theta[1] = ((curr_time - prev_time)/1000.0)*theta_dot[1] + theta[1];
+  theta[2] = ((curr_time - prev_time)/1000.0)*theta_dot[2] + theta[2];
+  prev_time = curr_time;
   
   //need to figure out how a PWM value maps to an angular value
   long pulselength1 = map((long)theta[1], 0, 180, SERVOMIN, SERVOMAX);
