@@ -144,7 +144,7 @@ void setup() {
   }else{
     EEPROM.get(0,data_info);
     data_size = data_info.data_size;
-    curr_address = data_size;
+    curr_address = sizeof(meta_data_node);
     log_count = data_info.num_logs;
     Serial.print("Time(ms), Yaw(deg), Pitch(deg), Roll(deg)");
 
@@ -174,9 +174,9 @@ void setup() {
 void loop() {
   sensors_event_t accel, mag, gyro, temp;   //read IMU data
   lsm.getEvent(&accel, &mag, &gyro, &temp);   //takes snapshot at time t(i)
-  w[0] = gyro.gyro.x - w_xe;   //angular velocity around x-axis
-  w[1] = gyro.gyro.y - w_ye;   //angular velocity around y-axis
-  w[2] = gyro.gyro.z - w_ze;   //angular velocity around z-axis
+  w[0] = gyro.gyro.x /*- w_xe*/;   //angular velocity around x-axis
+  w[1] = gyro.gyro.y /*- w_ye*/;   //angular velocity around y-axis
+  w[2] = gyro.gyro.z /*- w_ze*/;   //angular velocity around z-axis
   acc[0] = accel.acceleration.x;
   acc[1] = accel.acceleration.y;
   acc[2] = accel.acceleration.z;
