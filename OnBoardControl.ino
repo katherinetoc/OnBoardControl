@@ -38,6 +38,7 @@ const float g=9.80665;   //m/s^2
 const float wndspd=0.0;    //m/s                              //**CHANGE ON DAY OF LAUNCH**
 const float burn_engage_alt = 0;
 const float iris_engage_alt = 0;
+const float logging_engage_alt = 0;
 //equilibrium state variables
 const float w_xe = 0.0;   //rad/s
 const float w_ye = 0.0;
@@ -51,6 +52,7 @@ double theta[3] = {0.0, 0.0, 0.0};             //Euler angle vector assumed init
 double theta_dot[3];         //time derivatives of Euler angles
 bool read_mode = false;  //SET TO FALSE IF DOING DATA GENERATION, TRUE IF DOING DATA COLLECTION
 double w[3];          //angular velocity vector
+double acc[3];        //Acceleration vector
 float mag_x;         //x-comp magnetic field
 float mag_y;         //y-comp magnetic field
 float mag_z;         //z-comp magnetic field
@@ -83,7 +85,8 @@ double x_id[3] = {1,
 double K[21] = { 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000,
                   0.0000, 0.4000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000,
                   0.0000, 1.5000, 0.0500, 0.2500, 0.2500, 0.1500, 0.3500 };   //tentative gain matrix. Negative real eigenvalues for A-BK. Can be tuned further if needed.
-
+bool logging_active = 0;
+bool descent_mode = 0;
 int curr_address = 0;
 int num_logs = 0;
 int data_size = 0;
@@ -174,18 +177,35 @@ void loop() {
   w[0] = gyro.gyro.x - w_xe;   //angular velocity around x-axis
   w[1] = gyro.gyro.y - w_ye;   //angular velocity around y-axis
   w[2] = gyro.gyro.z - w_ze;   //angular velocity around z-axis
+  acc[0] = accel.acceleration.x;
+  acc[1] = accel.acceleration.y;
+  acc[2] = accel.acceleration.z;
   mag_x = mag.magnetic.x;   //x-comp magnetic field
   mag_y = mag.magnetic.y;   //y-comp
   mag_z = mag.magnetic.z;   //z-comp
   P = bmp.pressure;         //Pressure in Pa
   alt = bmp.readAltitude(sealvl_P);   //altitude in meters
   //add in if statement to close iris.
-  if(alt < burn_engage_alt){
+  if(alt > logging_engage_alt){
+    logging_active = 1;
+  }
+  
+  float acc_mag_sq = acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2];
+  if(acc_mag_sq < 1.0){ //Is this a reasonable buffer zone for free-fall phase acceleration?
+    descent_mode = 1;
+  }
+  
+  if(descent_mode && (alt < burn_engage_alt)){
     //IGNITE MOTOR
   }
-  if(alt < iris_engage_alt){
+
+  if(descent_mode && (alt < iris_engage_alt)){
     //ENGAGE IRIS
   }
+  
+  
+  
+
   
 
   //calculate N here from previous angles
@@ -261,8 +281,8 @@ void loop() {
   //pwm.setPWM(servonum_placehold, 0, pulselength2);
   //pwm.setPWM(servonum_placehold, 0, pulselength3);
   
-  if(!read_mode && (loop_count % LOG_SKIP == 0) ){ //If in operation mode, only writing to EEPROM will occur
-    if(curr_address <= (MAX_EEPROM_ADDR - data_size) && (data_info.num_logs < MAX_LOGS)){
+  if(logging_active && !read_mode && (loop_count % LOG_SKIP == 0)){ //If in operation mode, only writing to EEPROM will occur
+    if((curr_address <= (MAX_EEPROM_ADDR - data_size)) && (data_info.num_logs < MAX_LOGS)){
       data_node to_log;
       to_log.roll = theta[2];
       to_log.yaw = theta[0];
@@ -308,6 +328,5 @@ void print_data_line(unsigned long t, float yaw, float pitch, float roll){
   Serial.print(pitch, DEC);
   Serial.print(',');
   Serial.print(roll, DEC);
-  Serial.print(',');
   Serial.println();
 }
