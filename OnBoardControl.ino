@@ -23,6 +23,8 @@
 #define sealvl_P (69)     //Pa                                //**CHANGE ON DAY OF LAUNCH**
 #define MAX_EEPROM_ADDR 65536
 #define LOG_SKIP 100
+#define MAX_LOGS 100
+#define ITERATION_DELAY 5 //ms
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40, Wire);
 #define SERVOMIN  150 // This is the 'minimum' pulse length count (out of 4096)
 #define SERVOMAX  600 // This is the 'maximum' pulse length count (out of 4096)
@@ -34,6 +36,8 @@ Adafruit_LSM9DS1 lsm = Adafruit_LSM9DS1(); // i2c sensor
 Adafruit_BMP3XX bmp; // I2C
 const float g=9.80665;   //m/s^2
 const float wndspd=0.0;    //m/s                              //**CHANGE ON DAY OF LAUNCH**
+const float burn_engage_alt = 0;
+const float iris_engage_alt = 0;
 //equilibrium state variables
 const float w_xe = 0.0;   //rad/s
 const float w_ye = 0.0;
@@ -176,6 +180,13 @@ void loop() {
   P = bmp.pressure;         //Pressure in Pa
   alt = bmp.readAltitude(sealvl_P);   //altitude in meters
   //add in if statement to close iris.
+  if(alt < burn_engage_alt){
+    //IGNITE MOTOR
+  }
+  if(alt < iris_engage_alt){
+    //ENGAGE IRIS
+  }
+  
 
   //calculate N here from previous angles
   //generate rotation matrices based on integrated angular velocities
@@ -251,7 +262,7 @@ void loop() {
   //pwm.setPWM(servonum_placehold, 0, pulselength3);
   
   if(!read_mode && (loop_count % LOG_SKIP == 0) ){ //If in operation mode, only writing to EEPROM will occur
-    if(curr_address <= (MAX_EEPROM_ADDR - data_size)){
+    if(curr_address <= (MAX_EEPROM_ADDR - data_size) && (data_info.num_logs < MAX_LOGS)){
       data_node to_log;
       to_log.roll = theta[2];
       to_log.yaw = theta[0];
@@ -261,6 +272,7 @@ void loop() {
       EEPROM.put(curr_address, to_log);
       curr_address += data_size;
       data_info.num_logs++;
+      EEPROM.put(0, data_info);
     }else{
       //EEPROM overflow whoops handle somehow
     }
@@ -285,6 +297,7 @@ void loop() {
   }
   loop_count++;
   //probably need a delay in here
+  delay(ITERATION_DELAY);
 }
 
 void print_data_line(unsigned long t, float yaw, float pitch, float roll){
