@@ -286,11 +286,15 @@ void loop() {
   theta[1] = ((curr_time - prev_time)/1000.0)*theta_dot[1] + theta[1];
   theta[2] = ((curr_time - prev_time)/1000.0)*theta_dot[2] + theta[2];
   prev_time = curr_time;
+
+  print_data_line(curr_time, theta[0], theta[1], theta[2], bmp.readAltitude(sealvl_P));
   
   //need to figure out how a PWM value maps to an angular value
+  /*
   long pulselength1 = map((long)theta[0], 0, 180, SERVOMIN, SERVOMAX);
   long pulselength2 = map((long)theta[1], 0, 180, SERVOMIN, SERVOMAX);
   long pulselength3 = map((long)theta[2], 0, 180, SERVOMIN, SERVOMAX);
+  */
   //pwm.setPWM(servonum_placehold, 0, pulselength1);
   //pwm.setPWM(servonum_placehold, 0, pulselength2);
   //pwm.setPWM(servonum_placehold, 0, pulselength3);
@@ -332,7 +336,7 @@ void loop() {
   */
   loop_count++;
   //probably need a delay in here
-  delay(ITERATION_DELAY);
+  //delay(ITERATION_DELAY);
 }
 
 void print_data_line(unsigned long t, float yaw, float pitch, float roll, float h){
