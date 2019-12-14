@@ -262,7 +262,7 @@ void loop() {
   float q_0c = q0 - q_0e;
   float q_1c = q1 - q_1e;
   float q_2c = q2 - q_2e;
-  float q_3c = q3 - q_3c;
+  float q_3c = q3 - q_3e;
   //populate state vector
   x_c[0] = q_0c;
   x_c[1] = q_1c;
@@ -333,7 +333,7 @@ void loop() {
   delay(ITERATION_DELAY);
 }
 
-void print_data_line(unsigned long t, float yaw, float pitch, float roll){
+void print_data_line(unsigned long t, float yaw, float pitch, float roll, float h){
   Serial.print(t, DEC);
   Serial.print(',');
   Serial.print(yaw, DEC);
@@ -341,5 +341,7 @@ void print_data_line(unsigned long t, float yaw, float pitch, float roll){
   Serial.print(pitch, DEC);
   Serial.print(',');
   Serial.print(roll, DEC);
+  Serial.print(',');
+  Serial,print(h, DEC);
   Serial.println();
 }
