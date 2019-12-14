@@ -138,7 +138,7 @@ void setup() {
     Serial.println("Altimeter didnt' open up right. Infinite looping now.");
     while (1);
   }
-
+/*
   if(!read_mode){
     data_size = sizeof(data_node);
     curr_address = sizeof(meta_data_node); //Start data logging after meta_data node
@@ -153,6 +153,7 @@ void setup() {
     Serial.print("Time(ms), Yaw(deg), Pitch(deg), Roll(deg)");
 
   }
+  */
   pwm.begin();
   pwm.setOscillatorFrequency(27000000);  // The int.osc. is closer to 27MHz  
   pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
@@ -275,9 +276,9 @@ void loop() {
   Matrix.Multiply((mtx_type*)x_c, (mtx_type*)neg_one, 7,1,1, (mtx_type*)x_c); // x_c = -1 * x_c
   Matrix.Multiply((mtx_type*)K, (mtx_type*)x_c,3,7,1,(mtx_type*)u);
   //convert back to euler angles
-  theta[1] = (PI/180.0)*atan((2*(x_c[0]*x_c[1] + x_c[2]*x_c[3]))/(1 - 2*(sq(x_c[1]) + sq(x_c[2]))));
-  theta[2] = (PI/180.0)*asin(2*(x_c[0]*x_c[2] - x_c[3]*x_c[1]));
-  theta[3] = (PI/180.0)*atan((2*(x_c[0]*x_c[3] + x_c[1]*x_c[2]))/(1 - 2*(sq(x_c[2]) + sq(x_c[3]))));
+  theta[0] = (PI/180.0)*atan((2*(x_c[0]*x_c[1] + x_c[2]*x_c[3]))/(1 - 2*(sq(x_c[1]) + sq(x_c[2]))));
+  theta[1] = (PI/180.0)*asin(2*(x_c[0]*x_c[2] - x_c[3]*x_c[1]));
+  theta[2] = (PI/180.0)*atan((2*(x_c[0]*x_c[3] + x_c[1]*x_c[2]))/(1 - 2*(sq(x_c[2]) + sq(x_c[3]))));
 
   //integrate to get Euler angles
   curr_time = millis();
@@ -287,13 +288,13 @@ void loop() {
   prev_time = curr_time;
   
   //need to figure out how a PWM value maps to an angular value
-  long pulselength1 = map((long)theta[1], 0, 180, SERVOMIN, SERVOMAX);
-  long pulselength2 = map((long)theta[2], 0, 180, SERVOMIN, SERVOMAX);
-  long pulselength3 = map((long)theta[3], 0, 180, SERVOMIN, SERVOMAX);
+  long pulselength1 = map((long)theta[0], 0, 180, SERVOMIN, SERVOMAX);
+  long pulselength2 = map((long)theta[1], 0, 180, SERVOMIN, SERVOMAX);
+  long pulselength3 = map((long)theta[2], 0, 180, SERVOMIN, SERVOMAX);
   //pwm.setPWM(servonum_placehold, 0, pulselength1);
   //pwm.setPWM(servonum_placehold, 0, pulselength2);
   //pwm.setPWM(servonum_placehold, 0, pulselength3);
-  
+  /*
   if(logging_active && !read_mode && (loop_count % LOG_SKIP == 0)){ //If in operation mode, only writing to EEPROM will occur
     if((curr_address <= (MAX_EEPROM_ADDR - data_size)) && (data_info.num_logs < MAX_LOGS)){
       data_node to_log;
@@ -319,7 +320,7 @@ void loop() {
       float h_data = data_buffer.h;
       unsigned long t_data = data_buffer.t;
       //Logging a line to the serial monitor
-      print_data_line(t_data, yaw_data, pitch_data, roll_data);
+      print_data_line(t_data, yaw_data, pitch_data, roll_data, h_data);
       curr_address += data_info.data_size;
       log_count--;
     }else{
@@ -328,6 +329,7 @@ void loop() {
     }
     
   }
+  */
   loop_count++;
   //probably need a delay in here
   delay(ITERATION_DELAY);
@@ -342,6 +344,6 @@ void print_data_line(unsigned long t, float yaw, float pitch, float roll, float 
   Serial.print(',');
   Serial.print(roll, DEC);
   Serial.print(',');
-  Serial,print(h, DEC);
+  Serial.print(h, DEC);
   Serial.println();
 }
